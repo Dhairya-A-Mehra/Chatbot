@@ -6,6 +6,7 @@ from collections import Counter
 from datasets import load_dataset
 import pickle
 import json
+import numpy as np
 
 # Download NLTK resources
 try:
@@ -45,13 +46,13 @@ def label_intent(question):
     words = question.split()
     for keyword in symptom_keywords:
         if keyword in words or any(keyword in word for word in words if len(word) >= len(keyword)):
-            print(f"Debug: Matched symptom keyword '{keyword}' in '{question}'")
+            # print(f"Debug: Matched symptom keyword '{keyword}' in '{question}'")
             return 0  # Symptom
     for keyword in treatment_keywords:
         if keyword in words or any(keyword in word for word in words if len(word) >= len(keyword)):
-            print(f"Debug: Matched treatment keyword '{keyword}' in '{question}'")
+            # print(f"Debug: Matched treatment keyword '{keyword}' in '{question}'")
             return 1  # Treatment
-    print(f"Debug: No keyword matched in '{question}', defaulting to general")
+    # print(f"Debug: No keyword matched in '{question}', defaulting to general")
     return 2  # General
 
 # Load dataset
@@ -71,6 +72,40 @@ data["Question"] = data["Question"].apply(clean_text)
 data["Answer"] = data["Answer"].apply(clean_text)
 data["patient_tokens"] = data["Question"].apply(word_tokenize)
 data["doctor_tokens"] = data["Answer"].apply(word_tokenize)
+
+# Load doctors.json for all_symptoms
+try:
+    with open("data/doctors.json", "r") as f:
+        doc_data = json.load(f)
+    all_symptoms = doc_data.get("all_symptoms", list(doc_data["mappings"].keys()))
+except FileNotFoundError:
+    print("Error: doctors.json not found in data/ directory")
+    raise SystemExit("Please create data/doctors.json with all_symptoms and mappings")
+
+# Extract symptom co-occurrence
+symptom_cooc = {}
+for sym1 in all_symptoms:
+    symptom_cooc[sym1] = {}
+    for sym2 in all_symptoms:
+        symptom_cooc[sym1][sym2] = 0
+
+for question in data["Question"]:
+    words = question.split()
+    present_symptoms = [sym for sym in all_symptoms if sym in words]
+    for i, sym1 in enumerate(present_symptoms):
+        for sym2 in present_symptoms[i+1:]:
+            symptom_cooc[sym1][sym2] += 1
+            symptom_cooc[sym2][sym1] += 1
+
+# Convert to matrix
+cooc_matrix = np.zeros((len(all_symptoms), len(all_symptoms)))
+for i, sym1 in enumerate(all_symptoms):
+    for j, sym2 in enumerate(all_symptoms):
+        cooc_matrix[i][j] = symptom_cooc[sym1][sym2]
+
+# Save co-occurrence matrix
+np.save("data/symptom_cooc.npy", cooc_matrix)
+print("Symptom co-occurrence matrix saved to data/symptom_cooc.npy")
 
 all_words = [word for sent in data["patient_tokens"] for word in sent] + \
             [word for sent in data["doctor_tokens"] for word in sent]

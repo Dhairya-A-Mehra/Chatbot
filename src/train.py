@@ -32,7 +32,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Training loop with accuracy and plotting
-num_epochs = 10
+num_epochs = 20
 losses = []
 accuracies = []
 

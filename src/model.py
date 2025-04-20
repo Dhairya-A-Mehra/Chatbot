@@ -18,9 +18,9 @@ class Decoder(nn.Module):
         self.lstm = nn.LSTM(embed_size, hidden_size, batch_first=True)
         self.fc = nn.Linear(hidden_size, vocab_size)
     def forward(self, x, hidden, cell):
-        x = self.embedding(x)
-        output, (hidden, cell) = self.lstm(x, (hidden, cell))
-        output = self.fc(output)
+        x = self.embedding(x)  # Shape: (batch_size, 1, embed_size)
+        output, (hidden, cell) = self.lstm(x, (hidden, cell))  # hidden, cell updated
+        output = self.fc(output)  # Shape: (batch_size, 1, vocab_size)
         return output, hidden, cell
 
 class IntentClassifier(nn.Module):
@@ -44,12 +44,16 @@ class Chatbot(nn.Module):
         batch_size, trg_len = trg.shape
         vocab_size = self.decoder.fc.out_features
         outputs = torch.zeros(batch_size, trg_len, vocab_size).to(src.device)
-        hidden, cell = self.encoder(src)
-        intent_input = hidden[-1]
+        hidden, cell = self.encoder(src)  # Shape: (1, batch_size, hidden_size)
+        
+        # Use hidden[-1] directly for intent, no squeeze needed
+        intent_input = hidden[-1]  # Shape: (batch_size, hidden_size)
         intent_logits = self.classifier(intent_input)
-        x = trg[:, 0]
+        
+        x = trg[:, 0].unsqueeze(1)  # Shape: (batch_size, 1)
         for t in range(1, trg_len):
-            output, hidden, cell = self.decoder(x.unsqueeze(1), hidden, cell)
-            outputs[:, t] = output.squeeze(1)
-            x = trg[:, t] if torch.rand(1).item() < teacher_forcing_ratio else output.argmax(2).squeeze()
+            output, hidden, cell = self.decoder(x, hidden, cell)  # hidden, cell shape: (1, batch_size, hidden_size)
+            outputs[:, t] = output.squeeze(1)  # Remove the sequence dimension
+            x = trg[:, t].unsqueeze(1) if torch.rand(1).item() < teacher_forcing_ratio else output.argmax(2)
+        
         return outputs, intent_logits
